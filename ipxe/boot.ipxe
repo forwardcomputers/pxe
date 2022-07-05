@@ -1,0 +1,575 @@
+#!ipxe
+#
+#Location for ipxe, http://boot.ipxe.org/
+#Location for wimboot, https://git.ipxe.org/releases/wimboot/
+#
+chain secrets || goto error
+
+# Distribution release version
+set alpine_release 3.16.0
+set arch_release 2022.07.01
+set debian_name bullseye
+set debian_release 11.3
+set fedora_release 36
+set opensuse_release 15.4
+set ubuntu_name jammy
+set ubuntu_release 22.04
+set windows_release 10
+set freebsd_release 13.0
+set netbsd_release 9.2
+set openbsd_release 7.0
+
+# Mirrors
+set alpine_mirror mirror.csclub.uwaterloo.ca/alpine
+set arch_mirror mirror.csclub.uwaterloo.ca/archlinux
+set debian_mirror debian.mirror.iweb.ca
+set debian_live debian.mirror.iweb.ca
+set fedora_mirror fedora.mirror.iweb.ca
+#set fedora_mirror mirror.csclub.uwaterloo.ca/fedora
+set opensuse_mirror mirror.csclub.uwaterloo.ca/opensuse
+set ubuntu_mirror ubuntu.mirror.iweb.ca
+
+# Some menu defaults
+set spaces2:hex 20:20
+set spaces2 ${spaces2:string}
+set spaces5:hex 20:20:20:20:20
+set spaces5 ${spaces5:string}
+set spaces15:hex 20:20:20:20:20:20:20:20:20:20:20:20:20:20:20
+set spaces15 ${spaces15:string}
+set esc:hex 1b
+set reset ${esc:string}[0m
+set bold ${esc:string}[1m
+set ital ${esc:string}[3m
+set under ${esc:string}[4m
+set boldoff ${esc:string}[22m
+set italoff ${esc:string}[23m
+set underoff ${esc:string}[24m
+set fg_bla ${esc:string}[30m
+set fg_red ${esc:string}[31m
+set fg_gre ${esc:string}[32m
+set fg_yel ${esc:string}[33m
+set fg_blu ${esc:string}[34m
+set fg_mag ${esc:string}[35m
+set fg_cya ${esc:string}[36m
+set fg_whi ${esc:string}[37m
+set bg_bla ${esc:string}[40m
+set bg_red ${esc:string}[41m
+set bg_gre ${esc:string}[42m
+set bg_yel ${esc:string}[43m
+set bg_blu ${esc:string}[44m
+set bg_mag ${esc:string}[45m
+set bg_cya ${esc:string}[46m
+set bg_whi ${esc:string}[47m
+set cls ${esc:string}[2J
+#set menu-timeout 30000
+#set menu-timeout 0
+set submenu-timeout ${menu-timeout}
+#console --x 800 --y 600
+#cpair --foreground 7 --background 0 0
+isset ${menu-default} || set menu-default exit
+
+# Figure out if client is 64-bit capable
+iseq ${buildarch} i386 && set arch x86 || set arch x64
+iseq ${buildarch} i386 && set archb 32 || set archb 64
+iseq ${buildarch} i386 && set arch_fedora i386 || set arch_fedora x86_64
+iseq ${buildarch} i386 && set arch_debian i386 || set arch_debian amd64
+iseq ${platform} efi && set archp efi || set archp bios
+
+set initiator-iqn iqn.2000-01.bootpc
+#
+# DANGER - A working auto boot experiment
+#prompt --timeout 5000 Press any key for menu && goto start ||
+#iseq ${mac} a6:24:16:db:98:05 && goto auto_boot ||
+#goto start
+#
+########## windows menu ####################
+
+:start
+menu iPXE ${version} - ${manufacturer} ${product} - ${archb}bit ${archp}
+item --gap
+item --key 0 auto_boot      ${bold}0${boldoff}. Auto boot - Debian
+item --key 9 auto_log       ${bold}9${boldoff}. Auto boot - console
+item --gap
+item --key 1 menu_windows   ${bold}1${boldoff}. Windows install
+item --key 2 linux_auto     ${bold}2${boldoff}. Linux auto install
+item --key 3 linux_install  ${bold}3${boldoff}. Linux install
+item --key 4 linux_live     ${bold}4${boldoff}. Linux live
+item --key 5 linux_iscsi    ${bold}5${boldoff}. Linux iscsi
+item --key 6 bsd_install    ${bold}6${boldoff}. BSD install
+item --gap
+item --key 7 menu_tools     ${bold}7${boldoff}. Tools menu
+item --gap --               ------------------------------ Advanced ---------------------------------
+item --key r refresh_menu   ${bold}R${boldoff}efresh menu
+item --key c config         ${bold}C${boldoff}onfigure settings
+item --key i shell          Enter ${bold}i${boldoff}PXE shell
+iseq ${archp} efi && item --key s efishell       EFI ${bold}s${boldoff}hell ||
+iseq ${archp} efi && item --key m mok            EFI ${bold}m${boldoff}okmanager ||
+item --key t reboot         Reboo${bold}t${boldoff}
+item --key x --default exit E${bold}x${boldoff}it (boot local disk)
+
+choose selected
+#choose --timeout ${menu-timeout} selected || goto cancel
+#set menu-timeout 0
+goto ${selected}
+
+########## advanced items ####################
+
+:config
+config
+goto start
+
+:shell
+echo Type exit to get the back to the menu
+shell
+#set menu-timeout 0
+goto start
+
+:efishell
+# https://github.com/tianocore/edk2/tree/master/ShellBinPkg
+imgfree
+chain ${http-url}/pxe/misc/tools/shell.efi.signed || imgfree
+goto start
+
+:mok
+imgfree
+chain ${http-url}/pxe/grub/mmx64.efi.signed || imgfree
+goto start
+
+:reboot
+reboot
+
+:refresh_menu
+chain -ar boot.ipxe
+
+:cancel
+echo You cancelled the menu, dropping you to a shell
+goto shell
+
+:back
+#set submenu-timeout 0
+clear submenu-default
+goto start
+
+:failed
+echo Booting failed, dropping to shell
+goto shell
+
+:exit
+exit
+
+########## windows menu ####################
+
+:menu_windows
+menu Windows installation
+item --gap
+item win            Windows install
+item winre          Windows emergency recovery
+item winpe          Windows PE
+item --gap
+item --key 0x08 --default back <== Back to top menu...
+choose selected && goto ${selected} || goto start
+
+########## windows menu items ####################
+
+:win
+imgfree
+kernel ${http-url}/pxe/misc/tools/wimboot
+initrd --name winpeshl.ini ${http-url}/pxe/unattend/win/winpeshl.ini winpeshl.ini || goto failed
+goto winboot
+
+:winre
+imgfree
+kernel ${http-url}/pxe/misc/tools/wimboot
+initrd --name winpeshl.ini ${http-url}/pxe/unattend/win/winpeshl_repair.ini winpeshl.ini || goto failed
+goto winboot
+
+:winboot
+initrd --name bcd      ${http-url}/win/iso/boot/bcd      bcd      || goto failed
+initrd --name boot.sdi ${http-url}/win/iso/boot/boot.sdi boot.sdi || goto failed
+initrd --name boot.wim ${http-url}/win/iso/boot/boot.wim boot.wim || goto failed
+boot || goto failed
+
+:winpe
+imgfree
+kernel ${http-url}/pxe/misc/tools/wimboot
+#iseq ${platform} pcbios && initrd --name bootmgr     ${http-url}/win/iso/winpe/bootmgr              bootmgr     ||
+#iseq ${platform} efi    && initrd --name bootx64.efi ${http-url}/win/iso/winpe/EFI/Boot/bootx64.efi bootx64.efi ||
+#initrd --name bcd      ${http-url}/win/iso/winpe/Boot/BCD         bcd        || goto failed
+#initrd --name boot.sdi ${http-url}/win/iso/winpe/Boot/boot.sdi    boot.sdi   || goto failed
+#initrd --name boot.wim ${http-url}/win/iso/winpe/sources/boot.wim boot.wim   || goto failed
+initrd --name bcd      ${http-url}/win/iso/winpe/bcd      bcd      || goto failed
+initrd --name boot.sdi ${http-url}/win/iso/winpe/boot.sdi boot.sdi || goto failed
+initrd --name boot.wim ${http-url}/win/iso/winpe/boot.wim boot.wim || goto failed
+boot || goto failed
+
+########## linux/unix menu ####################
+
+:menu_nix
+menu Linux/Unix installation
+iseq ${menu_option} live    && item amlinuxlive     AM Linux live ||
+iseq ${menu_option} install && item alpine          Alpine ${alpine_release} ||
+iseq ${menu_option} install && item alpineedge      Alpine edge ||
+iseq ${menu_option} install && item alpine_pi       Alpine Raspberry Pi ||
+iseq ${menu_option} auto    && item archai          Arch ${arch_release} auto install ||
+iseq ${menu_option} install && item arch            Arch ${arch_release} ||
+iseq ${menu_option} auto    && item debianai        Debian ${debian_release} ${debian_name} auto install ||
+iseq ${menu_option} install && item debian          Debian ${debian_release} ${debian_name} install ||
+iseq ${menu_option} live    && item debianlive      Debian ${debian_release} ${debian_name} live ||
+iseq ${menu_option} auto    && item fedoraai        Fedora ${fedora_release} auto install ||
+iseq ${menu_option} install && item fedora          Fedora ${fedora_release} install ||
+iseq ${menu_option} live    && item fedoralive      Fedora ${fedora_release} live ||
+iseq ${menu_option} auto    && item rawhideai       Fedora Rawhide auto install ||
+iseq ${menu_option} install && item rawhide         Fedora Rawhide install ||
+iseq ${menu_option} live    && item rawhidelive     Fedora Rawhide live ||
+iseq ${menu_option} install && item ubuntusrv       Ubuntu Server ${ubuntu_release} ${ubuntu_name} install ||
+iseq ${menu_option} auto    && item ubuntusrvai     Ubuntu Server ${ubuntu_release} ${ubuntu_name} auto install ||
+iseq ${menu_option} live    && item ubuntuws        Ubuntu Workstation ${ubuntu_release} ${ubuntu_name} live ||
+iseq ${menu_option} auto    && item ubuntuwsai      Ubuntu Workstation ${ubuntu_release} ${ubuntu_name} auto install ||
+iseq ${menu_option} iscsi   && item opensuseiscsi   OpenSuse Leap ${opensuse_release} iscsi ||
+iseq ${menu_option} install && item opensuse        OpenSuse Leap ${opensuse_release} install ||
+#iseq ${menu_option} iscsi   && item tumbleweediscsi OpenSuse tumbleweed iscsi ||
+iseq ${menu_option} install && item tumbleweed      OpenSuse Tumbleweed Install ||
+iseq ${menu_option} bsd     && item fbsda64         FreeBSD Install arm ${freebsd_release} ( Disable Secure Boot ) ||
+iseq ${menu_option} bsd     && item fbsdx64         FreeBSD Install x86 ${freebsd_release} ( Disable Secure Boot ) ||
+#iseq ${menu_option} bsd     && item nbsda64         NetBSD Install arm ${netbsd_release} ( Disable Secure Boot ) ||
+iseq ${menu_option} bsd     && item nbsdx64         NetBSD Install x86 ${netbsd_release} ( Disable Secure Boot ) ||
+iseq ${menu_option} bsd     && item obsda64         OpenBSD Install arm ${openbsd_release} ( Disable Secure Boot ) ||
+iseq ${menu_option} bsd     && item obsdx64         OpenBSD Install x86 ${openbsd_release} ( Disable Secure Boot ) ||
+item --gap
+item --key 0x08 --default back <== Back to top menu...
+choose selected && goto ${selected} || goto start
+
+########## linux/unix menu items ####################
+
+:linux_auto
+set menu_option auto
+goto menu_nix
+
+:linux_install
+set menu_option install
+goto menu_nix
+
+:linux_live
+set menu_option live
+goto menu_nix
+
+:linux_iscsi
+set menu_option iscsi
+goto menu_nix
+
+:bsd_install
+set menu_option bsd
+goto menu_nix
+
+:auto_boot
+imgfree
+set url http://mirror.csclub.uwaterloo.ca/alpine/latest-stable
+set ks  ${http-url}/pxe/unattend/lnx/alpine/alpine-boot.tar.gz
+initrd  ${http-url}/pxe/misc/alpine/${arch}/initramfs-lts || goto failed
+boot    ${http-url}/pxe/misc/alpine/${arch}/vmlinuz-lts initrd=initramfs-lts \
+        modloop=${http-url}/pxe/misc/alpine/${arch}/modloop-lts alpine_repo=${url}/main \
+        apkovl=${ks} ip=dhcp modules=loop,squashfs quiet nomodeset console=tty0 || goto failed
+
+:auto_log
+imgfree
+set url http://mirror.csclub.uwaterloo.ca/alpine/latest-stable
+set ks  ${http-url}/pxe/unattend/lnx/alpine/alpine-log.tar.gz
+initrd  ${http-url}/pxe/misc/alpine/${arch}/initramfs-lts || goto failed
+boot    ${http-url}/pxe/misc/alpine/${arch}/vmlinuz-lts initrd=initramfs-lts \
+        modloop=${http-url}/pxe/misc/alpine/${arch}/modloop-lts alpine_repo=${url}/main \
+        apkovl=${ks} ip=dhcp modules=loop,squashfs quiet nomodeset console=tty0 || goto failed
+
+:amlinuxlive
+imgfree
+initrd  ${http-url}/pxe/misc/amlinux/rootfs.gz || goto failed
+boot    ${http-url}/pxe/misc/amlinux/bzImage initrd=rootfs.gz || goto failed
+
+:alpine_pi
+imgfree
+set url http://mirror.csclub.uwaterloo.ca/alpine/latest-stable
+set loc ${http-url}/pxe/misc/alpine/rpi
+kernel  ${loc}/boot/vmlinuz-rpi4 \
+        modloop=${loc}/boot/modloop-rpi4 alpine_repo=${url}/main \
+        modules=loop,squashfs console=ttyS0,115200 console=tty0 ip=dhcp || goto failed
+initrd  ${loc}/boot/initramfs-rpi4 || goto failed
+boot
+
+
+:alpine
+imgfree
+set url http://mirror.csclub.uwaterloo.ca/alpine/latest-stable
+initrd  ${url}/releases/${arch_fedora}/netboot/initramfs-lts || goto failed
+boot    ${url}/releases/${arch_fedora}/netboot/vmlinuz-lts initrd=initramfs-lts \
+        modloop=${url}/releases/${arch_fedora}/netboot/modloop-lts alpine_repo=${url}/main \
+        modules=loop,squashfs quiet nomodeset console=tty0 || goto failed
+
+:alpineedge
+imgfree
+set url http://mirror.csclub.uwaterloo.ca/alpine/edge
+initrd  ${url}/releases/${arch_fedora}/netboot/initramfs-lts || goto failed
+boot    ${url}/releases/${arch_fedora}/netboot/vmlinuz-lts initrd=initramfs-lts \
+        modloop=${url}/releases/${arch_fedora}/netboot/modloop-lts alpine_repo=${url}/main \
+        modules=loop,squashfs quiet nomodeset console=tty0 || goto failed
+
+##set url  http://${arch_mirror}/iso/latest
+###set boot ${url}/arch/boot/${arch_fedora}
+##set ks   ${http-url}/pxe/unattend/lnx/arch/auto_install.sh
+##initrd   ${http-url}/pxe/misc/arch/amd-ucode.img || goto failed
+##initrd   ${http-url}/pxe/misc/arch/intel-ucode.img  || goto failed
+##initrd   ${http-url}/pxe/misc/arch/initramfs-linux.img || goto failed
+##boot     ${http-url}/pxe/misc/arch/vmlinuz-linux.signed \
+##         initrd=initramfs-linux.img initrd=amd-ucode.img initrd=intel-ucode.img  \
+##         archiso_http_srv=${url}/ archisobasedir=arch \
+##         script=${ks} ip=dhcp console=tty0 console=tty1 \
+##         dist_mirror=http://${arch_mirror} || goto failed
+
+:arch
+imgfree
+initrd   ${http-url}/pxe/misc/arch/net/initramfs-linux.img || goto failed
+boot     ${http-url}/pxe/misc/arch/net/vmlinuz-linux.signed \
+         initrd=initramfs-linux.img \
+         archiso_http_srv=${http-url}/pxe/misc/arch/net/ archisobasedir=arch \
+         ip=dhcp console=tty0 console=tty1 \
+         dist_mirror=http://${arch_mirror} || goto failed
+
+:archai
+imgfree
+set ks   ${http-url}/pxe/unattend/lnx/arch/auto_install.sh
+initrd   ${http-url}/pxe/misc/arch/net/initramfs-linux.img || goto failed
+boot     ${http-url}/pxe/misc/arch/net/vmlinuz-linux.signed \
+         initrd=initramfs-linux.img \
+         archiso_http_srv=${http-url}/pxe/misc/arch/net/ archisobasedir=arch \
+         script=${ks} ip=dhcp console=tty0 console=tty1 \
+         dist_mirror=http://${arch_mirror} || goto failed
+
+:debianai
+imgfree
+initrd  ${http-url}/pxe/misc/debian/net/initrd.gz || goto failed
+boot    ${http-url}/pxe/misc/debian/net/linux initrd=initrd.gz \
+        mirror/http/directory=/debian mirror/http/hostname=${debian_mirror} \
+        url=${http-url}/pxe/unattend/lnx/debian/preseed.cfg \
+        priority=critical ipv6.disable=1 net.ifnames=0 audit=0 auto=true || goto failed
+
+:debian
+imgfree
+#set url http://${debian_mirror}/debian/dists/Debian${debian_release}/main/installer-${arch_debian}/current/images/netboot/debian-installer/${arch_debian}
+set url http://${debian_mirror}/debian/dists/bullseye/main/installer-${arch_debian}/current/images/netboot/debian-installer/${arch_debian}
+initrd  ${url}/initrd.gz || goto failed
+boot    ${url}/linux initrd=initrd.gz \
+        mirror/http/directory=/debian mirror/http/hostname=${debian_mirror} mirror/country=manual || goto failed
+
+:debianlive
+imgfree
+initrd  ${http-url}/pxe/misc/debian/live/initrd.img || goto failed
+boot    ${http-url}/pxe/misc/debian/live/vmlinuz initrd=initrd.img \
+        fetch=${http-url}/pxe/misc/debian/live/filesystem.squashfs \
+        boot=live || goto failed
+
+:fedoraai
+imgfree
+set url http://${fedora_mirror}/linux/releases/${fedora_release}/Everything/${arch_fedora}/os
+set upd http://${fedora_mirror}/linux/updates/${fedora_release}/Everything/${arch_fedora}
+initrd  ${http-url}/pxe/misc/fedora/fedora/net/initrd.img || goto failed
+boot    ${http-url}/pxe/misc/fedora/fedora/net/vmlinuz initrd=initrd.img \
+        inst.repo=${url} inst.stage2=${url} inst.ks=${http-url}/pxe/unattend/lnx/fedora/ks.cfg \
+        ks_url=${http-url}/pxe/unattend/lnx/fedora upd_url=${upd} net.ifnames=0 audit=0 || goto failed
+
+:fedora
+imgfree
+set url http://${fedora_mirror}/linux/releases/${fedora_release}/Everything/${arch_fedora}/os
+initrd  ${url}/images/pxeboot/initrd.img || goto failed
+boot    ${url}/images/pxeboot/vmlinuz initrd=initrd.img inst.repo=${url} devfs=nomount || goto failed
+
+:fedoralive
+imgfree
+initrd  ${http-url}/pxe/misc/fedora/live/initrd.img || goto failed
+boot    ${http-url}/pxe/misc/fedora/live/vmlinuz initrd=initrd.img \
+        root=live:${http-url}/pxe/misc/fedora/live/squashfs.img \
+        ro ip=dhcp rd.live.image rd.lvm=0 rd.luks=0 rd.md=0 rd.dm=0 || goto failed
+
+:rawhideai
+imgfree
+set url http://${fedora_mirror}/linux/development/rawhide/Everything/${arch_fedora}/os
+initrd  ${http-url}/pxe/misc/fedora/rawhide/net/initrd.img || goto failed
+boot    ${http-url}/pxe/misc/fedora/rawhide/net/vmlinuz initrd=initrd.img \
+        inst.repo=${url} inst.stage2=${url} inst.ks=${http-url}/pxe/unattend/lnx/fedora/ks.cfg \
+        ks_url=${http-url}/pxe/unattend/lnx/fedora net.ifnames=0 audit=0 || goto failed
+
+:rawhide
+imgfree
+set url http://${fedora_mirror}/linux/rawhide/Everything/${arch_fedora}/os
+initrd  ${url}/images/pxeboot/initrd.img || goto failed
+boot    ${url}/images/pxeboot/vmlinuz initrd=initrd.img inst.repo=${url} devfs=nomount || goto failed
+
+:rawhidelive
+imgfree
+initrd  ${http-url}/pxe/misc/rawhide/live/initrd.img || goto failed
+boot    ${http-url}/pxe/misc/rawhide/live/vmlinuz initrd=initrd.img \
+        root=live:${http-url}/pxe/misc/rawhide/live/squashfs.img \
+        ro ip=dhcp rd.live.image rd.lvm=0 rd.luks=0 rd.md=0 rd.dm=0 || goto failed
+
+:opensuseiscsi
+imgfree
+set root-path ${http-url}/pxe/misc/opensuse/opensuse.iso
+sanboot --keep --drive 0x80 ${root-path} || goto failed
+
+:opensuse
+imgfree
+set url http://${opensuse_mirror}/distribution/leap/${opensuse_release}/repo/oss
+initrd  ${url}/boot/${arch_fedora}/loader/initrd || goto failed
+boot    ${url}/boot/${arch_fedora}/loader/linux initrd=initrd install=${url} || goto failed
+
+:tumbleweed
+imgfree
+set url http://provo-mirror.opensuse.org/tumbleweed/repo/oss
+initrd  ${url}/boot/${arch_fedora}/loader/initrd || goto failed
+boot    ${url}/boot/${arch_fedora}/loader/linux initrd=initrd install=${url} || goto failed
+
+:tumbleweediscsi
+imgfree
+set root-path ${http-url}/pxe/misc/tumbleweed/tumbleweed.iso
+sanboot --keep --drive 0x80 ${root-path} || goto failed
+
+:ubuntusrv
+imgfree
+initrd  ${http-url}/pxe/misc/ubuntu/initrdserver || goto failed
+boot    ${http-url}/pxe/misc/ubuntu/vmlinuzserver initrd=initrdserver \
+        url=${http-url}/pxe/misc/ubuntu/ubuntuserver.iso \
+        ethdevice-timeout=30 ip=dhcp root=/dev/ram0 || goto failed
+
+:ubuntusrvai
+imgfree
+initrd  ${http-url}/pxe/misc/ubuntu/initrdserver || goto failed
+boot    ${http-url}/pxe/misc/ubuntu/vmlinuzserver initrd=initrdserver \
+        url=${http-url}/pxe/misc/ubuntu/ubuntuserver.iso \
+        ds=nocloud-net;s=${http-url}/pxe/unattend/lnx/ubuntu/server/ \
+        autoinstall ethdevice-timeout=30 ip=dhcp ipv6.disable=1 root=/dev/ram0 || goto failed
+
+:ubuntuws
+imgfree
+initrd  ${http-url}/pxe/misc/ubuntu/net/initrdworkstation || goto failed
+boot    ${http-url}/pxe/misc/ubuntu/net/vmlinuzworkstation initrd=initrdworkstation \
+        url=${http-url}/pxe/misc/ubuntu/ubuntuworkstation.iso \
+        ethdevice-timeout=30 ip=dhcp root=/dev/ram0 || goto failed
+#        ethdevice-timeout=30 ip=dhcp root=/dev/ram0 ramdisk_size=5000000 || goto failed
+
+:ubuntuwsai
+imgfree
+initrd  ${http-url}/pxe/misc/ubuntu/initrdserver || goto failed
+boot    ${http-url}/pxe/misc/ubuntu/vmlinuzserver initrd=initrdserver \
+        url=${http-url}/pxe/misc/ubuntu/ubuntuserver.iso \
+        ds=nocloud-net;s=${http-url}/pxe/unattend/lnx/ubuntu/workstation/ \
+        autoinstall ethdevice-timeout=30 ip=dhcp ipv6.disable=1 root=/dev/ram0 || goto failed
+
+:fbsda64
+chain ${http-url}/pxe/misc/freebsd/arm64/boot/loader.efi || goto failed
+
+:fbsdx64
+chain ${http-url}/pxe/misc/freebsd/amd64/boot/loader.efi || goto failed
+
+:nbsda64
+chain ${http-url}/misc/netbsd/evbarm-aarch64/bootaa64.efi || goto failed
+
+:nbsdx64
+chain ${http-url}/misc/netbsd/amd64/bootx64.efi || goto failed
+
+:obsda64
+set _arch=arm64
+goto openbsd
+
+:obsdx64
+set _arch=amd64
+goto openbsd
+
+:openbsd
+set root-path ${http-url}/pxe/misc/openbsd/${_arch}
+sanboot --no-describe --drive 0x00 ${root-path}/openbsd.img || goto failed
+
+########## tools menu ####################
+
+:menu_tools
+menu Tools
+item --gap
+item gparted        Graphical Partition Manager
+item clone          Clonezilla
+item krd            Kaspersky Rescue Disk
+item systemrescue   System Rescue
+item --gap
+item --key 0x08 --default back <== Back to top menu...
+choose selected && goto ${selected} || goto start
+
+########## tools menu items ####################
+
+:gparted
+imgfree
+initrd  ${http-url}/pxe/misc/gparted/initrd.img || goto failed
+boot    ${http-url}/pxe/misc/gparted/vmlinuz initrd=initrd.img \
+        fetch=${http-url}/pxe/misc/gparted/filesystem.squashfs boot=live union=overlay username=user vga=788 \
+        gl_batch config components noeject noswap locales=en_US.UTF-8 keyboard-layouts=en || goto failed
+
+#        fetch=${http-url}/pxe/misc/gparted/filesystem.squashfs boot=live union=overlay username=user ip=${dns} vga=788 \
+#        gl_batch config components noeject noprompt noswap locales=en_US.UTF-8 keyboard-layouts=en || goto failed
+
+:clone
+imgfree
+initrd  ${http-url}/pxe/misc/clonezilla/initrd.img || goto failed
+boot    ${http-url}/pxe/misc/clonezilla/vmlinuz initrd=initrd.img \
+        fetch=${http-url}/pxe/misc/clonezilla/filesystem.squashfs \
+        union=overlay config components noswap username=user edd=on nomodeset nodmraid locales=en_US.UTF-8 keyboard-layouts=en \
+        boot=live ocs_live_run="ocs-live-general" ocs_live_extra_param="" ocs_live_batch=no \
+        net.ifnames=0 nosplash noprompt || goto failed
+
+:krd
+imgfree
+initrd  ${http-url}/pxe/misc/krd/boot/grub/initrd.xz || goto failed
+boot    ${http-url}/pxe/misc/krd/boot/grub/k-x86_64.signed initrd=initrd.xz \
+        nfsboot=${nfs-url}/pxe/misc/krd lang=en dostartx || goto failed
+
+:systemrescue
+imgfree
+initrd  ${http-url}/pxe/misc/systemrescue/sysresccd/boot/${arch_fedora}/sysresccd.img || goto failed
+boot    ${http-url}/pxe/misc/systemrescue/sysresccd/boot/${arch_fedora}/vmlinuz.signed initrd=sysresccd.img \
+        archiso_http_srv=${http-url}/pxe/misc/systemrescue/ archisobasedir=sysresccd \
+        checksum=y ip=dhcp net.ifnames=0 console=tty0 console=tty1 || goto failed
+
+########## testing items ####################
+
+:test
+imgfree
+iseq ${platform} efi && goto is_efi ||
+set pxe_menu menu-bios
+goto pxel
+:is_efi
+cpuid --ext 29 && set pxe_menu menu-efi64 || set pxe_menu menu-efi32
+:pxel
+set 209:string /pxelinux.cfg/default
+set 210:string ${pxe_menu}
+imgselect  ${210:string}/lpxelinux.0  || goto failed
+imgexec                               || goto failed
+goto failed
+
+:wwindows-pxe
+#set 67:string pxeboot.n12
+#set 17:string ${pxe_menu}
+iseq ${platform} efi && set boot-file bootmgr.efi || set boot-file pxeboot.n12
+imgselect  ${pxe_menu}/${boot-file}  || goto failed
+#imgselect  ${pxe_menu}/pxeboot.n12  || goto failed
+#imgselect  http://${next-server}/srv/iso/Boot.amd64/PXE/wdsnbp.com  || goto failed
+#imgselect  http://${next-server}/srv/iso/Boot.amd64/PXE/bootmgr.exe  || goto failed
+#imgselect  http://${next-server}/srv/iso/Boot.amd64/PXE/bootmgr.efi  || goto failed
+imgexec    || goto failed
+goto failed
+
+:rpdesktop-x86
+set custom   -- locales=${locale} keyboard-layouts=${layoutcode} timezone=${timezone} utc=no
+set options  ip=dhcp nfsroot=${nfsroot}/${os} ro netboot=nfs boot=live config
+imgselect  ${base}/${os}/live/vmlinuz2  ${options}  ${custom}  || goto failed
+imgfetch   ${base}/${os}/live/initrd2.img                      || goto failed
+imgexec  
+goto failed
+
+:iscsifreebsd
+imgfree
+set iscsi-lun=1
+set root-path ${filer-iscsi}:${iscsi-lun}:${filer-iqn}:filer.opensuse
+sanboot --keep ${root-path} || goto failed
